@@ -7,7 +7,6 @@ module tb_mpunit_top;
     logic [15:0] sw_i;
     logic run_i;
     logic load_b;
-    logic sign_led;
     logic [7:0] regB;
     logic [7:0] hex_seg_a;
     logic [3:0] hex_grid_a;
@@ -21,9 +20,7 @@ module tb_mpunit_top;
         .sw_i(sw_i),
         .run_i(run_i),
         .load_b(load_b),
-        .sign_led(sign_led),
         .regB(regB),
-        .counter(counter),
         .regA(regA),
         .hex_seg_a(hex_seg_a),
         .hex_grid_a(hex_grid_a),
