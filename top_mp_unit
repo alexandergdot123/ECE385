@@ -7,28 +7,21 @@ module mpunit_top(
 	output logic [7:0]  hex_seg_a,
 	output logic [3:0]  hex_grid_a,
 	output logic [7:0]  hex_seg_b,
-	output logic [3:0]  hex_grid_b
+	output logic [3:0]  hex_grid_b,
+	output logic [7:0]  regA,
+	output logic [7:0]  regB,
+	output logic [2:0] counter
 );
     assign sign_led = 1;
-    logic op1;
-    logic op2;
-    logic [2:0] counter;
-    logic [7:0] regA;
-    logic [7:0] cur_regB;
-	// Declare temporary values used by other modules
 	logic load_b_once;
-	//Out;
 	logic load_b_s;
 	logic run_once;
-	logic [16:0] s;
-	logic [16:0] out;
 //	logic loadB_s_1;
 //	logic run_s_1;
 //	assign load_b_s = load_b;
 //	assign run_s = run_i;
 	// Synchronized inputs (denoted by _s in naming convention)
 	logic run_s;
-	logic [15:0] sw_s;
     
 	// Allows the register to load once, and not during full duration of button press
 	// ie. converts an active low button press to a single clock cycle active high event
@@ -59,17 +52,17 @@ module mpunit_top(
         .switches(sw_i[7:0]), //changing this to unsycnhronized for simulation purposes
         .loadB(load_b_once),
         .exe(run_once),
-        .regB(out[7:0]),
+        .regB(regB),
         .regA(regA),
         .counter(counter),
         .opt1(opt1),
         .opt2(opt2)
     );
-    assign cur_regB = out[7:0];
+
 	hex_driver hex_b (
 		.clk		(clk),
 		.reset		(load_b_once),
-		.in			({regA[7:4],regA[3:0], out[7:4], out[3:0]}),
+		.in			({regA[7:4],regA[3:0], regB[7:4], regB[3:0]}),
 		.hex_seg	(hex_seg_b),
 		.hex_grid	(hex_grid_b)
 	);
