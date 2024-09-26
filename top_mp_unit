@@ -3,16 +3,16 @@ module mpunit_top(
 	input  logic [15:0] sw_i,
     input  logic run_i, // _i stands for input
     input  logic load_b,
-	output logic 		sign_led,
 	output logic [7:0]  hex_seg_a,
 	output logic [3:0]  hex_grid_a,
 	output logic [7:0]  hex_seg_b,
 	output logic [3:0]  hex_grid_b,
-	output logic [7:0]  regA,
-	output logic [7:0]  regB,
-	output logic [2:0] counter
+	output logic [7:0] regA,    // Visible during simulation
+    output logic [7:0] regB
+
+
 );
-    assign sign_led = 1;
+    logic [2:0] counter;
 	logic load_b_once;
 	logic load_b_s;
 	logic run_once;
