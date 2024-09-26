@@ -1,0 +1,84 @@
+module select_adder ( //MAYBE WHAT I NEED TO DO IS TO SHIFT EVERY SINGLE ONE AND BEGING BY MULTIPLYING BY THE BIGGEST NUMBER!
+	input  logic  [8:0] a, 
+    input  logic  [8:0] b,
+	input  logic         cin,
+	
+	output logic  [8:0] s,
+	output logic         cout
+);
+	logic [2:0] intermediate;
+	three_ripple_adder single_tri_adder(
+		.a(a[2:0]),
+		.b(b[2:0]),
+		.cin(cin),
+
+		.s(s[2:0]),
+		.cout(intermediate[0])
+	);
+	generate
+		for(genvar i = 1; i<3; i++) begin
+			logic option_zero;
+			logic option_one;
+			logic [2:0] output_zero;
+			logic [2:0] output_one;
+			three_ripple_adder if_zero_ripple(
+				.a(a[3*i + 2: 3*i]),
+				.b(b[3*i + 2: 3*i]),
+				.cin(1'b0),
+				
+				.s(output_zero),
+				.cout(option_zero)
+			);
+			three_ripple_adder if_one_ripple(
+				.a(a[3*i + 2: 3*i]),
+				.b(b[3*i + 2: 3*i]),
+				.cin(1'b1),
+				
+				.s(output_one),
+				.cout(option_one)
+			);
+			assign s[3*i + 2: 3*i] = (intermediate[i-1]) ? output_one : output_zero;
+			assign intermediate[i] = option_zero | (option_one & intermediate[i-1]);
+		end
+	endgenerate
+	assign cout = intermediate[2];
+endmodule
+
+module three_ripple_adder (
+	input logic [2:0] a,
+	input logic [2:0] b,
+	input logic cin,
+	output logic [2:0] s,
+	output logic cout
+);
+	logic [3:0] intermediate;
+	assign intermediate[0] = cin;
+	generate
+		for(genvar i = 0; i<3; i++) begin
+			full_adder my_full_adder (
+				.a(a[i]),
+				.b(b[i]),
+				.cin(intermediate[i]),
+
+				.s(s[i]),
+				.cout(intermediate[i+1])
+			);
+		end
+	endgenerate
+	assign cout = intermediate[3];
+endmodule
+
+
+module full_adder (
+	input logic a,
+	input logic b,
+	input logic cin,
+
+	output logic s,
+	output logic cout
+);
+	always_comb begin
+		cout = (a & b) | (a & cin) | (b & cin);
+		s = a ^ b ^ cin;
+	end
+endmodule
