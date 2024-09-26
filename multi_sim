@@ -1,0 +1,103 @@
+module tb_mpunit_top;
+	timeunit 10ns;	// This is the amount of time represented by #1 
+	timeprecision 1ns;
+
+    // Testbench signals
+    logic clk;
+    logic [15:0] sw_i;
+    logic run_i;
+    logic load_b;
+    logic sign_led;
+    logic [7:0] regB;
+    logic [7:0] hex_seg_a;
+    logic [3:0] hex_grid_a;
+    logic [7:0] hex_seg_b;
+    logic [3:0] hex_grid_b;
+    logic [2:0] counter;
+    logic [7:0] regA;
+    logic opt1;
+    // Instantiate the DUT (Device Under Test)
+    mpunit_top uut (
+        .clk(clk),
+        .sw_i(sw_i),
+        .run_i(run_i),
+        .load_b(load_b),
+        .sign_led(sign_led),
+        .cur_regB(regB),
+        .counter(counter),
+        .regA(regA),
+        .hex_seg_a(hex_seg_a),
+        .hex_grid_a(hex_grid_a),
+        .hex_seg_b(hex_seg_b),
+        .hex_grid_b(hex_grid_b),
+        .opt1(opt1),
+        .opt2(opt2)
+    );
+
+    // Clock generation
+    initial begin
+        clk = 0;
+        forever #5 clk = ~clk; // 100 MHz clock
+    end
+
+    // Test stimulus
+    initial begin
+        // Initialize inputs
+        sw_i = 16'h0000;
+        run_i = 0;
+        load_b = 0;
+
+        // Apply test vectors
+        #100;
+//        sw_i = 16'h0005;
+        sw_i = 16'h0025;
+        load_b = 1;
+        #10;
+        load_b = 0;
+        #20
+        sw_i = 16'h00FF;
+        #40;
+        run_i = 1;
+        #10;
+        run_i = 0;
+        #120;
+        run_i = 1;
+        #10;
+        run_i = 0;
+        #120;
+        run_i = 1;
+        #10;
+        run_i = 0;        
+        #120;
+        run_i = 1;
+        #10;
+        run_i = 0;
+        #120;
+        run_i = 1;
+        #10;
+        run_i = 0;
+        
+        #160;
+        sw_i = 16'h0067;
+        #10;
+//        load_b = 1;
+        #10;
+        load_b = 0;
+        #20;
+        run_i = 1;
+        #10;
+        run_i = 0;
+
+        // Finish simulation
+        #400;
+        $finish;
+    end
+
+    // Monitor outputs
+    initial begin
+        $monitor("Time=%0t, sw_i=%h, run_i=%b, load_b=%b, sign_led=%b, regB=%h, counter=%h, regA=%h, hex_grid_b=%h",
+                 $time, sw_i, run_i, load_b, sign_led, regB, counter, regA, hex_grid_b);
+    end
+
+endmodule
+
