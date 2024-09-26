@@ -1,0 +1,44 @@
+module load_reg #(
+    parameter DATA_WIDTH = 8 // I've modified this for shift register operation
+) (
+	input  logic	    clk, 
+	input  logic	    reset, 
+	input  logic	    load,
+    input  logic        shift,
+    input  logic        shift_in_bit,
+	input  logic [DATA_WIDTH-1:0] data_i, // set input/output size based on parameter
+
+	output logic [DATA_WIDTH-1:0] data_q
+);
+
+	logic [DATA_WIDTH-1:0] data_d;
+    logic [1:0] what_to_do;
+    assign what_to_do[0] = load;
+    assign what_to_do[1] = reset;
+	always_comb
+	begin
+	   case (what_to_do)
+	       2'b00: data_d = data_q;
+	       2'b01: data_d = data_i;
+	       2'b10: data_d = '0;
+	       2'b11: data_d = '0;
+	   endcase
+	end
+					
+	always_ff @(posedge clk)
+	begin
+        // Setting the output data_o of the register to zeros as Reset is pressed
+        if(reset) begin //notice that this is a synchronous reset
+            data_q <= '0;
+        end else begin
+            if(shift) begin
+                data_q[7] <=shift_in_bit;
+                data_q[6:0] <= data_d[DATA_WIDTH-1:1];
+            end
+            else begin
+                data_q <= data_d;
+            end
+        end
+	end
+		
+endmodule
