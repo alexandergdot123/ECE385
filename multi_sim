@@ -1,7 +1,6 @@
 module tb_mpunit_top;
 	timeunit 10ns;	// This is the amount of time represented by #1 
 	timeprecision 1ns;
-    logic optional;
     // Testbench signals
     logic clk;
     logic [15:0] sw_i;
@@ -25,8 +24,7 @@ module tb_mpunit_top;
         .hex_seg_a(hex_seg_a),
         .hex_grid_a(hex_grid_a),
         .hex_seg_b(hex_seg_b),
-        .hex_grid_b(hex_grid_b),
-        .optional(optional)
+        .hex_grid_b(hex_grid_b)
     );
     // Clock generation
     initial begin
@@ -82,7 +80,4 @@ module tb_mpunit_top;
         $finish;
     end
 endmodule
-
-
-
 
