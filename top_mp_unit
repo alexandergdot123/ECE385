@@ -8,8 +8,8 @@ module mpunit_top(
 	output logic [7:0]  hex_seg_b,
 	output logic [3:0]  hex_grid_b,
 	output logic [7:0] regA,    // Visible during simulation
-    output logic [7:0] regB
-
+    output logic [7:0] regB,
+    output logic optional
 
 );
     logic [2:0] counter;
@@ -55,8 +55,7 @@ module mpunit_top(
         .regB(regB),
         .regA(regA),
         .counter(counter),
-        .opt1(opt1),
-        .opt2(opt2)
+        .optional(optional)
     );
 
 	hex_driver hex_b (
