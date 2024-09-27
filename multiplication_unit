@@ -5,15 +5,13 @@ module multiply_unit(
     input logic exe,
     output logic [7:0] regB,
     output logic [7:0] regA,
-    output logic [2:0] counter,
-    output logic optional
+    output logic [2:0] counter
 );
     logic should_shift;
     logic M;
     logic [2:0] counter_state;
     
 
-    assign optional = exe;
     three_bit_counter moore (
         .clk(clk),
         .reset(loadB),
