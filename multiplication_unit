@@ -6,39 +6,35 @@ module multiply_unit(
     output logic [7:0] regB,
     output logic [7:0] regA,
     output logic [2:0] counter,
-    output logic opt1,
-    output logic opt2
+    output logic optional
 );
     logic should_shift;
     logic M;
     logic [2:0] counter_state;
-    logic should_counter_load;
     
-    assign should_counter_load = exe;
-    
+
+    assign optional = exe;
     three_bit_counter moore (
         .clk(clk),
         .reset(loadB),
-        .load(should_counter_load),
+        .load(exe),
 
         .out(counter_state)
     );
-    
-    assign counter = counter_state;
-    
+        
     logic counter_on;
     
-    assign counter_on = counter_state[2]|counter_state[1]| counter_state[0] | should_counter_load;
+    assign counter_on = counter_state[2]|counter_state[1]| counter_state[0] | exe;
     
     logic x_reg;
     logic [7:0] regAoutput;
     logic [7:0] regAinput;
     
-    load_reg #(.DATA_WIDTH(8)) registerA(
+    load_reg registerA(
         .clk(clk),
         .reset(loadB),
-        .load(counter_on),
-        .shift(1'b0),
+        .load((M & counter_on) | exe),
+        .shift(counter_on),
         .shift_in_bit(x_reg),
         .data_i(regAinput),
 
@@ -51,17 +47,15 @@ module multiply_unit(
     logic subtract;
 
     assign subtract = M & (counter_state == 3'b001); 
-    assign opt1 = subtract;
     logic cout;
-
-    logic [8:0] add_unit_in_A;
-    assign add_unit_in_A = (exe) ? 9'b000000000 : {regAoutput[7], regAoutput};
-
-
+      
+    
     logic [8:0] addition_unit_bin;
+    logic [8:0] addition_unit_ain;
+    assign addition_unit_ain = (exe) ? 9'b000000000 : {regAoutput[7],regAoutput};
     assign addition_unit_bin = (M & counter_state == 3'b001)? ~{switches[7],switches} : {switches[7],switches};
     select_adder addition_unit(
-        .a(add_unit_in_A),
+        .a(addition_unit_ain),
         .b(addition_unit_bin),
         .cin(subtract),
 
@@ -69,23 +63,19 @@ module multiply_unit(
         .cout(cout)
     );
 
-    logic [7:0] Bin;
-    
-    assign Bin = switches;
+
     
     logic [7:0] regBout;
-    logic B_shift_in;
-    logic should_load_reg_B;
     
-    assign should_load_reg_B = loadB;
-    
-    load_reg #(.DATA_WIDTH(8)) registerB(
+    logic bShiftIn;
+    assign bShiftIn = (M)? add_unit_output[0]:regAoutput[0] & (~exe);
+    load_reg registerB(
         .clk(clk),
         .reset(1'b0),
-        .load(should_load_reg_B),
+        .load(loadB),
         .shift(counter_on),
-        .shift_in_bit(B_shift_in),
-        .data_i(Bin),
+        .shift_in_bit(bShiftIn),
+        .data_i(switches),
 
         .data_q(regBout)
     );	
@@ -93,26 +83,11 @@ module multiply_unit(
     assign M = regBout[0];
     
     always_comb begin
-        B_shift_in = (M) ? add_unit_output[0] : add_unit_in_A[0];
-        regAinput[7:0] = (M) ? add_unit_output[8:1] : {x_reg,regAoutput[7:1]};
+        regAinput = (M) ? add_unit_output[8:1] :({8{~exe}}&{x_reg,regAoutput[7:1]});
     end
 
-    logic x_reg_in;
-    assign opt2 = x_reg;
-    assign x_reg_in = (M) ? add_unit_output[8] & ~loadB : x_reg & ~loadB; //this is defo wrong
-    
-    logic should_shift_next;
-    
-    always_comb begin
-        case (should_shift)
-            1'b0: should_shift_next= exe;
-            1'b1: should_shift_next=counter_on|exe;
-        endcase
-    end
-    
     always @(posedge clk) begin
-        x_reg <= x_reg_in;
-        should_shift<=should_shift_next;
+        x_reg <= (M) ? add_unit_output[8] : x_reg & ~exe;
     end
     
     assign regB = regBout;
