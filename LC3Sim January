@@ -1,0 +1,64 @@
+module hello;
+	logic clk = 0;
+	logic reset = 1;
+	logic [15:0] pc = 16'b0011000000000001;
+	logic loadPC = 1;
+	logic memoryLoad = 1;
+	logic [15:0] Address = 16'b0010111111111111;
+	logic [15:0] Data = 16'b0011000000000000;
+	logic [5:0] state;
+	logic [15:0] MDR, MAR, MainBus, IR, PC, SR1;
+	logic [2:0] control;
+	always #5 clk = ~clk;
+	initial
+		begin
+			$display("Hello, world");
+			#10 Address = 16'b0011000000000000;
+			Data = 16'b0010000000100100;
+			#10 Address = 16'b0011000000000001;
+			Data = 16'b1110001111111111;
+			#10 Address = 16'b0011000000000010;
+			Data = 16'b0110010001111111;
+			#10 Address = 16'b0011000000000011;
+			Data = 16'b0001010010100011;
+			#10 Address = 16'b0011000000000100;
+			Data = 16'b1010011111111010;
+			#10 Address = 16'b0011000000000101;
+			Data = 16'b0101100010000011;
+			#10 Address = 16'b0011000000000110;
+			Data = 16'b1011100111111000;
+			#10 Address = 16'b0011000000000111;
+			Data = 16'b0111100001111111;
+			#10 Address = 16'b0011000000001000;
+			Data = 16'b0010101111110110; 
+			#10 Address = 16'b0011000000001001;
+			Data = 16'b1001101101111111; 
+			#10 reset = 0;
+			memoryLoad = 0;
+			loadPC = 0;
+			#10000 $finish;
+			
+		end
+    LC3Simulation oopsie (
+        .clk(clk),
+        .reset(reset),
+        .PEECEE(pc),
+        .LOADPC(loadPC),
+        .memload(memoryLoad),
+        .memloadAddress(Address),
+        .memloadBits(Data),
+        .stateOutput(state),
+        .mainBusOutput(MainBus),
+        .MAROutput(MAR),
+        .MDROutput(MDR),
+        .PCOutput(PC),
+        .IROutput(IR),
+	.SR1Output(SR1),
+	.control(control)
+    );
+
+	initial 
+		$monitor("At time %t, MainBus = %h , PC = %h, MDR = %h, MAR = %h, IR = %h, state = %0d, SR1 = %h, control = %h", $time, MainBus,PC, MDR, MAR, IR, state, SR1, control);
+
+
+endmodule
