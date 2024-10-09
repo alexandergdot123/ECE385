@@ -1,4 +1,79 @@
 
+module select_adder (
+	input  logic  [15:0] a, 
+    input  logic  [15:0] b,
+	input  logic         cin,
+	
+	output logic  [15:0] s,
+	output logic         cout
+);
+
+	/* TODO
+		*
+		* Insert code here to implement a CSA adder.
+		* Your code should be completly combinational (don't use always_ff or always_latch).
+		* Feel free to create sub-modules or other files. */
+	logic [3:0] intermediate;
+	four_ripple_adder single_quad_adder(
+		.a(a[3:0]),
+		.b(b[3:0]),
+		.cin(cin),
+
+		.s(s[3:0]),
+		.cout(intermediate[0])
+	);
+	generate
+		for(genvar i = 1; i<4; i++) begin
+			logic option_zero;
+			logic option_one;
+			logic [3:0] output_zero;
+			logic [3:0] output_one;
+			four_ripple_adder if_zero_ripple(
+				.a(a[4*i + 3: 4*i]),
+				.b(b[4*i + 3: 4*i]),
+				.cin(1'b0),
+				
+				.s(output_zero),
+				.cout(option_zero)
+			);
+			four_ripple_adder if_one_ripple(
+				.a(a[4*i + 3: 4*i]),
+				.b(b[4*i + 3: 4*i]),
+				.cin(1'b1),
+				
+				.s(output_one),
+				.cout(option_one)
+			);
+			assign s[4*i + 3: 4*i] = (intermediate[i-1]) ? output_one : output_zero;
+			assign intermediate[i] = option_zero | (option_one & intermediate[i-1]);
+		end
+	endgenerate
+	assign cout = intermediate[3];
+endmodule
+
+module four_ripple_adder (
+	input logic [3:0] a,
+	input logic [3:0] b,
+	input logic cin,
+	output logic [3:0] s,
+	output logic cout
+);
+	logic [4:0] intermediate;
+	assign intermediate[0] = cin;
+	generate
+		for(genvar i = 0; i<4; i++) begin
+			Full_Adder my_full_adder (
+				.A(a[i]),
+				.B(b[i]),
+				.Cin(intermediate[i]),
+
+				.sum(s[i]),
+				.Cout(intermediate[i+1])
+			);
+		end
+	endgenerate
+	assign cout = intermediate[4];
+endmodule
 
 module Full_Adder (input A, input B, input Cin, output sum, output Cout);
 	assign sum = A^B^Cin;
@@ -6,25 +81,13 @@ module Full_Adder (input A, input B, input Cin, output sum, output Cout);
 endmodule
 
 
-module Sixteenbitadder (input[15:0] A, input [15:0] B, input Cin, output [15:0] Sum, output Cout);
-	logic [16:0] intermediate;
-	assign intermediate[0] = Cin;
-	genvar i;
-	generate
-		for(i=0; i<16; i=i+1) begin : FullAdders
-			Full_Adder instances (A[i], B[i], intermediate[i], Sum[i], intermediate[i+1]);
-		end
-	endgenerate
-	assign Cout = intermediate[16];
-endmodule
-
 module ALU (input [1:0] control, input [15:0] A, input [15:0] B, output [15:0] out);
 	logic [15:0] insertA;
 	logic [15:0] insertB;
 	assign insertB = ~({16{control[1]}} | {16{control[0]}}) & B;
 	assign insertA = (control[0]) ? A&B : A ^ {16{control[1]}};
 	logic peepee;
-	Sixteenbitadder Adder (insertA, insertB, 0, out, peepee);
+	select_adder Adder (insertA, insertB, 0, out, peepee);
 endmodule
 
 module RegisterFile #(
@@ -69,46 +132,58 @@ module RegisterFile #(
 
 endmodule
 
-module memory (input clk, input [15:0] Addr, input [15:0] dataIn, input RW, input MIOEN, output Ready, output [15:0] memoryOutput,
-input memLoad, input [15:0] memLoadAddress, input [15:0] memLoadBits);
-	logic [15:0] mem [65535:0];	
-	
-	always @(posedge clk) begin
-		if(memLoad)
-			mem[memLoadAddress] <= memLoadBits;
-	end
-	always @(posedge clk) begin
-		if (MIOEN) begin
-			if(RW) begin
-				mem[Addr] <= dataIn;
-			end
-		end
-	end
-	assign memoryOutput = MIOEN ? mem[Addr] : 16'b0000000000000000;
-	assign Ready = MIOEN;
-endmodule
 
-module LC3Simulation(input clk, input reset, input [15:0] PEECEE, input LOADPC,
- input memload, input [15:0] memloadAddress, input [15:0] memloadBits,
+//deprecating for this assignment
+
+//module memory (input clk, input [15:0] Addr, input [15:0] dataIn, input RW, input MIOEN, output Ready, output [15:0] memoryOutput,
+//input memLoad, input [15:0] memLoadAddress, input [15:0] memLoadBits);
+//	logic [15:0] mem [65535:0];	
+	
+//	always @(posedge clk) begin
+//		if(memLoad)
+//			mem[memLoadAddress] <= memLoadBits;
+//	end
+//	always @(posedge clk) begin
+//		if (MIOEN) begin
+//			if(RW) begin
+//				mem[Addr] <= dataIn;
+//			end
+//		end
+//	end
+//	assign memoryOutput = MIOEN ? mem[Addr] : 16'b0000000000000000;
+//	assign Ready = MIOEN;
+//endmodule
+
+module LC3Simulation(input clk, input reset,
  output [5:0] stateOutput,  output [15:0] mainBusOutput, output [15:0] MAROutput,
 output [15:0] MDROutput, output [15:0] PCOutput, output [15:0] IROutput,
-output [15:0] SR1Output, output [2:0] control);
-	logic [15:0] SR1OUT, SR2OUT, SR2MUXOUTPUT, 
-	ALURESULT, ADDR1MUXRESULT, MARMUXADDERRESULT, MARMUXRESULT, PCPLUSONE, memoryOutput;
-	logic GateALU, GateMARMUX, GatePC, GateMDR, ADDR1MUX, MARMUX, LDPC, RW, LDREG,
-	LDIR, Negative, Zero, Positive, LDMDR, LDMAR, MIOEN, LDBEN, LDCC, memReady; 
+output [15:0] SR1Output, output [2:0] control,
+
+//below here is where the beginning of the memory interactions begin
+output [15:0] memAddrRequest, output [15:0] memoryDataIn, output RW, output MIOEN, 
+input Ready, input [15:0] memoryOutput,
+
+//this next one is going to be whether the whole processor should continue or not
+input pause, output [15:0] debug_out
+);
+	logic [15:0] SR1OUT, SR2OUT, SR2MUXOUTPUT, ALURESULT, ADDR1MUXRESULT, MARMUXADDERRESULT, MARMUXRESULT, PCPLUSONE;
+	logic GateALU, GateMARMUX, GatePC, GateMDR, ADDR1MUX, MARMUX, LDPC, LDREG,
+	LDIR, Negative, Zero, Positive, LDMDR, LDMAR, LDBEN, LDCC, memReady; 
 	logic [15:0] PC, mainBus,  MAR, MDR,IR, ADDR2MUXRESULT, PCMUXRESULT;
 	logic[2:0] SR1,DR;
 	logic[2:0] SR2;
-	logic [2:0] CC = 3'b000;
+	logic [2:0] CC;
 	logic [1:0] ALUK, ADDR2MUX, PCMUX, DRMUX, SR1MUX;
-	logic [5:0] state = 6'b010010;
+	logic [5:0] state;
 	logic BEN;
 	RegisterFile REGFILE (.clk(clk), .writeData(mainBus), .writeAddr(DR), .writeEn(LDREG),
 	.readAddr2(SR2), .readAddr1(SR1), .readData2(SR2OUT), .readData1(SR1OUT), .reset(reset));
 	
-	memory memoryAttachment ( clk, MAR, MDR, RW, MIOEN, memReady, memoryOutput, memload, memloadAddress, memloadBits);
-	
+//	memory memoryAttachment ( clk, MAR, MDR, RW, MIOEN, memReady, memoryOutput, memload, memloadAddress, memloadBits);
+//below here are where I am going to begin assigning memory stuff to the outside
+    assign memAddrRequest = MAR;
+    assign memoryDataIn = MDR;
+    assign memReady = Ready;
 	assign SR2MUXOUTPUT = (IR[5]) ? {{11{IR[4]}} , IR[4:0]} : SR2OUT;
 	
 	assign stateOutput = state;
@@ -152,40 +227,48 @@ output [15:0] SR1Output, output [2:0] control);
 	end
 	assign GateMARMUX = ~state[5] & ~state[4] & state[1];
 	assign LDBEN = state[5:0]==0;
-	assign LDPC = ~state[5] & ((state[4] & ~state[3] & state[1] & ~state[0]) | (state[4] & ~state[3] & state[2] & ~state[1]) | (state[4] & state[2] & state[1] & ~state[0]) | state[4:0] == 12);
-	assign LDIR = state[5] & state[1] & state[0];
+	assign LDPC = state != 13 & state != 56 & ~state[5] & ((state[4] & ~state[3] & state[1] & ~state[0]) | (state[4] & ~state[3] & state[2] & ~state[1]) | (state[4] & state[2] & state[1] & ~state[0]) | state[4:0] == 12);
+	assign LDIR = state != 13 & state != 56 & state[5] & state[1] & state[0];
 	assign PCMUX[1] = ~(state[4:0]== 18 || state[4:0] == 30);
 	assign PCMUX[0] = state[4:0]==30;
-	assign GatePC = ~state[5] & ~state[0] & ((~(state[4] ^ state[3]) & state[2] & ~state[1]) | state[4:1] == 9); /* Error in compute for next line, state[27]*/
-	assign LDCC = ~state[5] & (state[4:0] == 1 || state[4:0] == 5 || state[4:0] == 9 || state[4:0] ==14 || state[4:0] == 27);
+	assign GatePC = ~state[5] & ~state[0] & ((~(state[4] ^ state[3]) & state[2] & ~state[1]) | state[4:1] == 9); 
+	assign LDCC = state != 13 & state != 56 & ~state[5] & (state[4:0] == 1 || state[4:0] == 5 || state[4:0] == 9 || state[4:0] ==14 || state[4:0] == 27);
 	assign GateALU = ~state[5] & ((~state[4] & state[0] & ~state[1] & ~(state[2] & state[3])) | (state[4:0] == 23)) ;
 	assign GateMDR = (~state[5] & state[4] & state[3] & state[1]) | (state[5] & state[1]);
 	assign RW = state[4:0] == 5'b10000;
-	assign LDMAR = ~state[5] & ((~state[4] & ~state[3] & state[1]) | (~state[4] & state[3] & state[1] & (~state[2] | state[0])) | (state[4] & ~state[2] & state[1] & ~state[0]) | state[4:0] == 31);
+	assign LDMAR = state != 13 & state != 56 & ~state[5] & ((~state[4] & ~state[3] & state[1]) | (~state[4] & state[3] & state[1] & (~state[2] | state[0])) | (state[4] & ~state[2] & state[1] & ~state[0]) | state[4:0] == 31);
 	assign MIOEN = ~state[1] & ((~state[5] & state[4] & state[3]) | (~state[5] & state[4] & ~state[2] & ~state[0]) | (state[5] & ~state[4] & ~state[3] & ~state[2] & state[0]));
 	assign MARMUX = state[4] | ~state[3] | ~state[2] | ~state[1] | ~state[0];
-	assign LDMDR = (~state[5] & state[4] & state[3] & ~state[1]) | state[4:0]==23 | state==33;
+	assign LDMDR = state != 13 & state != 56 & (~state[5] & state[4] & state[3] & ~state[1]) | state[4:0]==23 | state==33;
 	assign ALUK[0] = state[2] & ~(state[4:0] == 23);
 	assign ALUK[1] = state[4] | state[3];
 	assign SR1MUX[0] = ~(state==23);
 	assign SR1MUX[1] = 1'b0;
-	assign LDREG = ~state[5] & ((~state[4] & ~state[3] & state[2] & ~state[1]) | (~state[4] & ~state[2] & ~state[1] & state[0]) | (state[4:0] == 14 | state[4:0] ==27 | state[4:0] ==28));
+	assign LDREG = state != 13 & state != 56 & ~state[5] & ((~state[4] & ~state[3] & state[2] & ~state[1]) | (~state[4] & ~state[2] & ~state[1] & state[0]) | (state[4:0] == 14 | state[4:0] ==27 | state[4:0] ==28));
 	assign DRMUX[0] = ~(state[4] ^ state[3]) & state[2] & ~state[1] & ~state[0];
 	assign ADDR1MUX = state[2] & ((~state[1] & ~state[0]) | (~state[4] & ~state[3]));
 	assign ADDR2MUX[0] = (state[0] & ~state[1]) | (state[2] & ~state[3] & ~state[4]);
 	assign ADDR2MUX[1] = ~state[2] | (~state[1] & state[0]) | (state[3] & state[1]) | (state[4] & state[1]);
 	assign stateOutput[5:0] = state[5:0];
 	assign SR2 = IR[2:0];
+		
 	always @(posedge clk) begin
 		if(reset) begin
 			state <= 18;
-			PC <= (LOADPC) ? PEECEE : 16'b0000000000000000;
+			PC <= 16'b0000000000000000;
 			MDR <= 0;
 			MAR <= 0;
 			IR <=0;
 			CC<= 0;
-			//BEN <= 0;
 		end
+//		else if (pause) begin
+//            state <= state;
+//            PC <= PC;
+//			MDR <= MDR;
+//			MAR <= MAR;
+//			IR <=IR;
+//			CC<=CC;
+//		end
 		else begin
 						
 			if(LDCC) begin
@@ -215,7 +298,9 @@ output [15:0] SR1Output, output [2:0] control);
 				PC <= PCMUXRESULT;
 			else
 				PC <= PC;
-
+            if (reset) begin
+                state<=18;
+            end
 			case (state)
 				0: state <= {1'b0,1'b1,1'b0, BEN, 1'b1,1'b0};
 				1: state <= 18;
@@ -229,6 +314,7 @@ output [15:0] SR1Output, output [2:0] control);
 				10: state <= 24;
 				11: state <= 29;
 				12: state <= 18;
+				13: state <= ((pause) ? 18 : 13);
 				14: state <= 18;
 				15: state <= 28;
 				16: state <= {state[5:2], memReady, state[0]};
@@ -256,9 +342,9 @@ output [15:0] SR1Output, output [2:0] control);
 
 	assign ADDR1MUXRESULT = (ADDR1MUX) ? SR1OUT: PC;
 	logic hello, hello2;
-	Sixteenbitadder MARMUXADDER (ADDR1MUXRESULT, ADDR2MUXRESULT, 0, MARMUXADDERRESULT, hello);
+	select_adder MARMUXADDER (ADDR1MUXRESULT, ADDR2MUXRESULT, 0, MARMUXADDERRESULT, hello);
 	assign BEN = (CC[2] & IR[11])|(CC[1] & IR[10])|(CC[0] & IR[9]);
-	Sixteenbitadder PCPLUSONEADDER (PC, 16'b0, 1, PCPLUSONE, hello2);
+	select_adder PCPLUSONEADDER (PC, 16'b0, 1, PCPLUSONE, hello2);
 
 	assign MARMUXRESULT = (~MARMUX) ? {{8{1'b0}},IR[7:0]} : MARMUXADDERRESULT;
 
@@ -278,7 +364,6 @@ output [15:0] SR1Output, output [2:0] control);
 			mainBus = MDR;
 		else
 			mainBus = 16'h0000;
-
-
 	end
+	assign debug_out = PC;//{{6{1'b0}}, IR[9:0]};
 endmodule
