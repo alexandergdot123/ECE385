@@ -118,14 +118,16 @@ module RegisterFile #(
 		regs[6] <=0;
 		regs[7] <=0;
 	end
+	else begin
+	
+	    if (writeEn) begin
+          regs[writeAddr] <= writeData;
+        end
+	
+	
+	end
   end
-		
-
-  always @(posedge clk) begin
-    if (writeEn) begin
-      regs[writeAddr] <= writeData;
-    end
-  end
+	
 
   assign readData1 = regs[readAddr1];
   assign readData2 = regs[readAddr2];
@@ -164,7 +166,7 @@ output [15:0] memAddrRequest, output [15:0] memoryDataIn, output RW, output MIOE
 input Ready, input [15:0] memoryOutput,
 
 //this next one is going to be whether the whole processor should continue or not
-input pause, output [15:0] debug_out
+input continue_i, input run_i, output [15:0] debug_out
 );
 	logic [15:0] SR1OUT, SR2OUT, SR2MUXOUTPUT, ALURESULT, ADDR1MUXRESULT, MARMUXADDERRESULT, MARMUXRESULT, PCPLUSONE;
 	logic GateALU, GateMARMUX, GatePC, GateMDR, ADDR1MUX, MARMUX, LDPC, LDREG,
@@ -227,8 +229,8 @@ input pause, output [15:0] debug_out
 	end
 	assign GateMARMUX = ~state[5] & ~state[4] & state[1];
 	assign LDBEN = state[5:0]==0;
-	assign LDPC = state != 13 & state != 56 & ~state[5] & ((state[4] & ~state[3] & state[1] & ~state[0]) | (state[4] & ~state[3] & state[2] & ~state[1]) | (state[4] & state[2] & state[1] & ~state[0]) | state[4:0] == 12);
-	assign LDIR = state != 13 & state != 56 & state[5] & state[1] & state[0];
+	assign LDPC = state != 13 & state != 56 &~state[5] & ((state[4] & ~state[3] & state[1] & ~state[0]) | (state[4] & ~state[3] & state[2] & ~state[1]) | (state[4] & state[2] & state[1] & ~state[0]) | state[4:0] == 12);
+	assign LDIR = state != 13 & state != 56 &state[5] & state[1] & state[0];
 	assign PCMUX[1] = ~(state[4:0]== 18 || state[4:0] == 30);
 	assign PCMUX[0] = state[4:0]==30;
 	assign GatePC = ~state[5] & ~state[0] & ((~(state[4] ^ state[3]) & state[2] & ~state[1]) | state[4:1] == 9); 
@@ -236,10 +238,10 @@ input pause, output [15:0] debug_out
 	assign GateALU = ~state[5] & ((~state[4] & state[0] & ~state[1] & ~(state[2] & state[3])) | (state[4:0] == 23)) ;
 	assign GateMDR = (~state[5] & state[4] & state[3] & state[1]) | (state[5] & state[1]);
 	assign RW = state[4:0] == 5'b10000;
-	assign LDMAR = state != 13 & state != 56 & ~state[5] & ((~state[4] & ~state[3] & state[1]) | (~state[4] & state[3] & state[1] & (~state[2] | state[0])) | (state[4] & ~state[2] & state[1] & ~state[0]) | state[4:0] == 31);
+	assign LDMAR = state != 13 & state != 56 &state != 56 & ~state[5] & ((~state[4] & ~state[3] & state[1]) | (~state[4] & state[3] & state[1] & (~state[2] | state[0])) | (state[4] & ~state[2] & state[1] & ~state[0]) | state[4:0] == 31);
 	assign MIOEN = ~state[1] & ((~state[5] & state[4] & state[3]) | (~state[5] & state[4] & ~state[2] & ~state[0]) | (state[5] & ~state[4] & ~state[3] & ~state[2] & state[0]));
 	assign MARMUX = state[4] | ~state[3] | ~state[2] | ~state[1] | ~state[0];
-	assign LDMDR = state != 13 & state != 56 & (~state[5] & state[4] & state[3] & ~state[1]) | state[4:0]==23 | state==33;
+	assign LDMDR = state != 13 & state != 56 &(~state[5] & state[4] & state[3] & ~state[1]) | state[4:0]==23 | state==33;
 	assign ALUK[0] = state[2] & ~(state[4:0] == 23);
 	assign ALUK[1] = state[4] | state[3];
 	assign SR1MUX[0] = ~(state==23);
@@ -254,7 +256,7 @@ input pause, output [15:0] debug_out
 		
 	always @(posedge clk) begin
 		if(reset) begin
-			state <= 18;
+			state <= 56;
 			PC <= 16'b0000000000000000;
 			MDR <= 0;
 			MAR <= 0;
@@ -298,9 +300,6 @@ input pause, output [15:0] debug_out
 				PC <= PCMUXRESULT;
 			else
 				PC <= PC;
-            if (reset) begin
-                state<=18;
-            end
 			case (state)
 				0: state <= {1'b0,1'b1,1'b0, BEN, 1'b1,1'b0};
 				1: state <= 18;
@@ -314,7 +313,7 @@ input pause, output [15:0] debug_out
 				10: state <= 24;
 				11: state <= 29;
 				12: state <= 18;
-				13: state <= ((pause) ? 18 : 13);
+				13: state <= ((continue_i) ? 18 : 13);
 				14: state <= 18;
 				15: state <= 28;
 				16: state <= {state[5:2], memReady, state[0]};
@@ -334,6 +333,7 @@ input pause, output [15:0] debug_out
 				32: state <= {2'b00, IR[15:12]};
 				33: state <= {state[5:2], memReady, state[0]};
 				35: state <= 32;
+				56: state <= ((run_i) ? 18 : 56);//this should maintain state while continue is low. HALTED STATE
 				default: state <= 63;
 			endcase
 		end
