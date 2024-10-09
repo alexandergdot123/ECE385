@@ -119,14 +119,19 @@ module tb_processor_top;
 		reset = 1;
 		run_i = 0;
 		continue_i = 0;
-		sw_i = 6;
+		sw_i = 16'h009c;
 		#200;
 		reset = 0;
         #500;
         reset = 1;
         #200;
         reset = 0;
+        #300;
+        run_i = 1;
+        #200;
+        run_i = 0;
 		// Wait 100ns for global reset
+		
 		#1000;
 		// Begin Continue signal toggling for 10 iterations
 		repeat (10) begin
