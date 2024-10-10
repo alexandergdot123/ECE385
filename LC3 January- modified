@@ -1,94 +1,14 @@
-
-module select_adder (
-	input  logic  [15:0] a, 
-    input  logic  [15:0] b,
-	input  logic         cin,
-	
-	output logic  [15:0] s,
-	output logic         cout
-);
-
-	/* TODO
-		*
-		* Insert code here to implement a CSA adder.
-		* Your code should be completly combinational (don't use always_ff or always_latch).
-		* Feel free to create sub-modules or other files. */
-	logic [3:0] intermediate;
-	four_ripple_adder single_quad_adder(
-		.a(a[3:0]),
-		.b(b[3:0]),
-		.cin(cin),
-
-		.s(s[3:0]),
-		.cout(intermediate[0])
-	);
-	generate
-		for(genvar i = 1; i<4; i++) begin
-			logic option_zero;
-			logic option_one;
-			logic [3:0] output_zero;
-			logic [3:0] output_one;
-			four_ripple_adder if_zero_ripple(
-				.a(a[4*i + 3: 4*i]),
-				.b(b[4*i + 3: 4*i]),
-				.cin(1'b0),
-				
-				.s(output_zero),
-				.cout(option_zero)
-			);
-			four_ripple_adder if_one_ripple(
-				.a(a[4*i + 3: 4*i]),
-				.b(b[4*i + 3: 4*i]),
-				.cin(1'b1),
-				
-				.s(output_one),
-				.cout(option_one)
-			);
-			assign s[4*i + 3: 4*i] = (intermediate[i-1]) ? output_one : output_zero;
-			assign intermediate[i] = option_zero | (option_one & intermediate[i-1]);
-		end
-	endgenerate
-	assign cout = intermediate[3];
+module ALU (input [1:0] control, input [15:0] A, input [15:0] B, output logic [15:0] out);
+    always_comb begin
+        case (control)
+            2'b00: out = A + B;
+            2'b01: out = A & B;
+            2'b10: out = ~A;
+            2'b11: out = A;
+        endcase
+    end
 endmodule
 
-module four_ripple_adder (
-	input logic [3:0] a,
-	input logic [3:0] b,
-	input logic cin,
-	output logic [3:0] s,
-	output logic cout
-);
-	logic [4:0] intermediate;
-	assign intermediate[0] = cin;
-	generate
-		for(genvar i = 0; i<4; i++) begin
-			Full_Adder my_full_adder (
-				.A(a[i]),
-				.B(b[i]),
-				.Cin(intermediate[i]),
-
-				.sum(s[i]),
-				.Cout(intermediate[i+1])
-			);
-		end
-	endgenerate
-	assign cout = intermediate[4];
-endmodule
-
-module Full_Adder (input A, input B, input Cin, output sum, output Cout);
-	assign sum = A^B^Cin;
-	assign Cout = (A&B) | (B&Cin) | (A&Cin);
-endmodule
-
-
-module ALU (input [1:0] control, input [15:0] A, input [15:0] B, output [15:0] out);
-	logic [15:0] insertA;
-	logic [15:0] insertB;
-	assign insertB = ~({16{control[1]}} | {16{control[0]}}) & B;
-	assign insertA = (control[0]) ? A&B : A ^ {16{control[1]}};
-	logic peepee;
-	select_adder Adder (insertA, insertB, 0, out, peepee);
-endmodule
 
 module RegisterFile #(
   parameter DataWidth  = 16,
@@ -242,12 +162,13 @@ input continue_i, input run_i, output [15:0] debug_out
 	assign MIOEN = ~state[1] & ((~state[5] & state[4] & state[3]) | (~state[5] & state[4] & ~state[2] & ~state[0]) | (state[5] & ~state[4] & ~state[3] & ~state[2] & state[0]));
 	assign MARMUX = state[4] | ~state[3] | ~state[2] | ~state[1] | ~state[0];
 	assign LDMDR = state != 13 & state != 56 &(~state[5] & state[4] & state[3] & ~state[1]) | state[4:0]==23 | state==33;
-	assign ALUK[0] = state[2] & ~(state[4:0] == 23);
-	assign ALUK[1] = state[4] | state[3];
+	assign ALUK[0] = state[2];
+	assign ALUK[1] = (state[4] | state[3]); //I JUST CHANGED THIS
 	assign SR1MUX[0] = ~(state==23);
 	assign SR1MUX[1] = 1'b0;
 	assign LDREG = state != 13 & state != 56 & ~state[5] & ((~state[4] & ~state[3] & state[2] & ~state[1]) | (~state[4] & ~state[2] & ~state[1] & state[0]) | (state[4:0] == 14 | state[4:0] ==27 | state[4:0] ==28));
 	assign DRMUX[0] = ~(state[4] ^ state[3]) & state[2] & ~state[1] & ~state[0];
+	assign DRMUX[1] = 1'b0;
 	assign ADDR1MUX = state[2] & ((~state[1] & ~state[0]) | (~state[4] & ~state[3]));
 	assign ADDR2MUX[0] = (state[0] & ~state[1]) | (state[2] & ~state[3] & ~state[4]);
 	assign ADDR2MUX[1] = ~state[2] | (~state[1] & state[0]) | (state[3] & state[1]) | (state[4] & state[1]);
@@ -342,9 +263,9 @@ input continue_i, input run_i, output [15:0] debug_out
 
 	assign ADDR1MUXRESULT = (ADDR1MUX) ? SR1OUT: PC;
 	logic hello, hello2;
-	select_adder MARMUXADDER (ADDR1MUXRESULT, ADDR2MUXRESULT, 0, MARMUXADDERRESULT, hello);
+	assign MARMUXADDERRESULT = ADDR1MUXRESULT + ADDR2MUXRESULT;
 	assign BEN = (CC[2] & IR[11])|(CC[1] & IR[10])|(CC[0] & IR[9]);
-	select_adder PCPLUSONEADDER (PC, 16'b0, 1, PCPLUSONE, hello2);
+	assign PCPLUSONE = PC + 1;
 
 	assign MARMUXRESULT = (~MARMUX) ? {{8{1'b0}},IR[7:0]} : MARMUXADDERRESULT;
 
@@ -363,7 +284,7 @@ input continue_i, input run_i, output [15:0] debug_out
 		else if (GateMDR)
 			mainBus = MDR;
 		else
-			mainBus = 16'h0000;
+			mainBus = 16'hCCCC;
 	end
 	assign debug_out = PC;//{{6{1'b0}}, IR[9:0]};
 endmodule
