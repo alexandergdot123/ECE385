@@ -126,7 +126,7 @@ mem_addr, mem_wdata, mem_wr_ena, mem_mem_ena, memoryReadyCounter[0],  mem_rdata,
 //these are output debugs
 continue_i,run_i, debug_bits
 );
-assign led_o = {PCOutput[9:0],stateOutput};
+assign led_o = (stateOutput == 13) ? {8'h00, IROutput[7:0]} : 16'h0000;
 assign hex_display_debug = IROutput;
 
 endmodule
