@@ -6,28 +6,34 @@ module gpuCore(
     input reset
 
 );
-    enum logic [5:0] {
+    enum logic [21:0] {
         Decode, 
-        Add,
-        Bitwise,
-        Multiply, 
-        BitShift, 
-        CompareImmediate,
-        CompareDual,
-        LoadSharedImmediate,
-        LoadSharedReg,
-        LoadGlobalImmediate,
-        LoadGlobalReg,
-        StoreSharedImmediate,
-        StoreSharedReg,
-        StoreGlobalImmediate,
-        StoreGlobalReg
-
+        Add, //Opcode 0000
+        Bitwise, //Opcode 0001
+        Multiply, //Opcode 0010
+        BitShift, //Opcode 0011
+        CompareImmediate, //Opcode 0100
+        CompareDual, //Opcode 0101
+        LoadSharedImmediate, //Opcode 1000
+        LoadSharedReg,  //Opcode 1001
+        LoadGlobalImmediate, //Opcode 1010
+        LoadGlobalReg, //Opcode 1011
+        StoreSharedImmediate, //Opcode 1100
+        StoreSharedReg, //Opcode 1101
+        StoreGlobalImmediate, //Opcode 1110
+        StoreGlobalReg, //Opcode 1111
+        storeMemoryDataShared,
+        storeMemoryDataGlobal,
+        writeMemoryDataShared,
+        writeMemoryDataGlobal,
+        readMemoryDataShared,
+        readMemoryDataGlobal,
+        storeReadMemoryData
     } state;
     
     logic [31:0] sr1, sr2, mult_out, main_bus, add_in2, IR, add_out, bitShiftOut, bitwiseOut, comparatorOut, comparatorInput2;
     logic [5:0] countdown;
-    logic countdownOn, comparatorPositive, comparatorNegative, comparatorZero, skipLines;
+    logic countdownOn, comparatorPositive, comparatorNegative, comparatorZero, skipLines, readyForNextInstruction;
     always_ff @(posedge clk) begin
         if (reset) begin
             state <= Decode;
@@ -105,6 +111,7 @@ module gpuCore(
         comparatorZero = !(|comparatorOut);
         comparatorPositive = ~(comparatorZero | comparatorNegative);
         skipLines = (comparatorNegative & ~IR[25]) | (comparatorZero & ~IR[26]) | (comparatorPositive & ~IR[27]);
+        readyForNextInstruction = state == Decode;
     end
 
 
