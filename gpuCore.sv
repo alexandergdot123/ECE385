@@ -89,7 +89,7 @@ module gpuCore(
                     4'b1101: state <= StoreSharedReg;
                     4'b1110: state <= StoreGlobalImmediate;
                     4'b1111: state <= StoreGlobalReg;
-                    default: state <= Decode;
+                    default: state <= Bad;
                 endcase
             end
             else begin
@@ -133,7 +133,7 @@ module gpuCore(
                 end
             end
 
-            //For Mar
+            //For Mdr
             if(loadMdr) begin
                 mdr <= (externalMdrGate) ? MDRIn : mainBus; //if externalMDRGate is 1, then get the MDR value from external to the module
             end
@@ -348,12 +348,13 @@ module regFile(
     output logic [31:0] sr2Out
 );
     logic [31:0] registers [7];
-    int resetI;
+//    int resetI;
     always_ff @(posedge clk) begin
         if(reset) begin
-            for(resetI = 0; resetI < 7; resetI += 1) begin
-                registers[resetI] <= 0;
-            end
+//            for(resetI = 0; resetI < 7; resetI += 1) begin
+//                registers[resetI] <= 0;
+//            end
+            registers <= '{default: 0};
         end
         else begin
             if(loadReg) begin
