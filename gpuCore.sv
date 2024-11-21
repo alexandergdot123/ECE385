@@ -15,7 +15,7 @@ module gpuCore(
     output logic [31:0] marOut,
     output logic [31:0] mdrOut
 );
-    enum logic [21:0] {
+    enum logic {
         Decode, 
         Add, //Opcode 0000
         Bitwise, //Opcode 0001
@@ -248,7 +248,7 @@ module gpuCore(
                 loadMar = 1; // Load memory data register
                 gateAddOut = 1; 
                 chooseSR1 = IR[24:22];
-                chooseSR2 = IR[19:21];
+                chooseSR2 = IR[21:19];
             end
             LoadGlobalImmediate: begin
                 loadMar = 1; // Load global address into MAR
@@ -366,4 +366,3 @@ module regFile(
         sr2Out = (&sr2) ? threadID : registers[sr2];
     end
 endmodule
-
