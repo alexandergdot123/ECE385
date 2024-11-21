@@ -4,7 +4,9 @@ module gpuCore(
     input logic clk,
     input logic [31:0] threadId,
     input logic reset,
+    input logic finishedReadMemoryDataShared,
     input logic finishedReadMemoryDataGlobal,
+    input logic finishedWriteMemoryDataShared,
     input logic finishedWriteMemoryDataGlobal,
     input logic [31:0] MDRIn,
     output logic readyForNextInstruction,
@@ -13,9 +15,10 @@ module gpuCore(
     output logic readingMemoryDataShared,
     output logic readingMemoryDataGlobal,
     output logic [31:0] marOut,
-    output logic [31:0] mdrOut
+    output logic [31:0] mdrOut,
+    output logic [3:0] writeBytes
 );
-    enum logic {
+    enum logic [21:0] {
         Decode, 
         Add, //Opcode 0000
         Bitwise, //Opcode 0001
@@ -47,7 +50,7 @@ module gpuCore(
     logic countdownOn, comparatorPositive, comparatorNegative, comparatorZero, skipLines;
     logic [2:0] chooseSR1, chooseSR2, chooseDR;
     logic loadReg, loadMar, loadMdr, gateMultOut, gateBitwiseOut, gateBitshiftOut, gateAddOut, gateMdrOut, loadIR, gateSR1Out, externalMdrGate; 
-
+    logic [3:0] writeBits;
     regFile regFileInst(
         .clk(clk), 
         .reset(reset),
@@ -68,6 +71,7 @@ module gpuCore(
             countdown <= 0;
             mar <= 0;
             mdr <= 0;
+            writeBits <= 0;
         end
         else begin
 
@@ -89,7 +93,7 @@ module gpuCore(
                     4'b1101: state <= StoreSharedReg;
                     4'b1110: state <= StoreGlobalImmediate;
                     4'b1111: state <= StoreGlobalReg;
-                    default: state <= Bad;
+                    default: state <= Decode;
                 endcase
             end
             else begin
@@ -110,11 +114,11 @@ module gpuCore(
                     StoreSharedReg: state <= StoreMemoryDataShared;
                     StoreGlobalImmediate: state <= StoreMemoryDataGlobal;
                     StoreGlobalReg: state <= StoreMemoryDataGlobal;
-                    ReadMemoryDataShared: state <= StoreReadMemoryData;
+                    ReadMemoryDataShared: state <= (finishedReadMemoryDataShared) ? StoreReadMemoryData : ReadMemoryDataShared;
                     ReadMemoryDataGlobal: state <= (finishedReadMemoryDataGlobal) ? StoreReadMemoryData : ReadMemoryDataGlobal;
                     StoreReadMemoryData: state <= Decode;
                     WriteMemoryDataGlobal: state <= (finishedWriteMemoryDataGlobal) ? Decode : WriteMemoryDataGlobal;
-                    WriteMemoryDataShared: state <= Decode;
+                    WriteMemoryDataShared: state <= (finishedWriteMemoryDataShared) ? Decode : WriteMemoryDataShared;
                     Decode: state <= Decode;
                     default: state <= Bad; //this should never happen
                 endcase
@@ -133,18 +137,26 @@ module gpuCore(
                 end
             end
 
-            //For Mdr
-            if(loadMdr) begin
+            //For Mar
+            if(loadMDR) begin
                 mdr <= (externalMdrGate) ? MDRIn : mainBus; //if externalMDRGate is 1, then get the MDR value from external to the module
             end
 
             mar <= (loadMar) ? mainBus : mar;
+
+            if(state == StoreGlobalImmediate) begin
+                writeBits <= IR[21:18]
+            end
+            else if (state == StoreGlobalReg) begin
+                writeBits <= IR[18:15];
+            end
         end
     end
 
     always_comb begin
+        writeBytes = writeBits;
         countdownOn = |countdown;
-        multOut = SR1Out * ((IR[21]) ? {{16{IR[15]}}, IR[15:0]} : SR2Out);
+        multOut = SR1Out * SR2Out;
         addIn2 = ((IR[21]) ? {{16{IR[15]}}, IR[15:0]} : SR2Out) ^ {32{IR[20]}};
         addOut = SR1Out + addIn2 + {{31{1'b0}}, IR[20]};
         case(IR[21:18])
@@ -180,7 +192,6 @@ module gpuCore(
 
 
 
-//    logic [2:0] chooseSR1, chooseSR2, chooseDR;
 
     always_comb begin
         // Default values for control signals
@@ -198,74 +209,51 @@ module gpuCore(
         readingMemoryDataGlobal = 1'b0;
         readingMemoryDataShared = 1'b0;
         externalMdrGate = 1'b0;
-        chooseSR1 = 3'bxxx;
-        chooseSR2 = 3'bxxx;
-        chooseDR = 3'bxxx;
         // State-based control signal assignments
         case (state)
             Decode: begin
             end
             Add: begin
-                chooseSR1 = IR[24:22];
-                chooseSR2 = IR[19:17];
-                chooseDR = IR[27:25];
                 loadReg = 1; // Load result into register
                 gateAddOut = 1; // Enable ALU add output
             end
             Bitwise: begin
-                chooseSR1 = IR[24:22];
-                chooseSR2 = IR[19:17];
-                chooseDR = IR[27:25];
                 loadReg = 1; // Load result into register
                 gateBitwiseOut = 1; // Enable bitwise operation output
             end
             Multiply: begin
-                chooseSR1 = IR[24:22];
-                chooseSR2 = IR[19:17];
-                chooseDR = IR[27:25];
                 loadReg = 1; // Load result into register
                 gateMultOut = 1; // Enable multiplier output
             end
             BitShift: begin
-                chooseSR1 = IR[24:22];
-                chooseDR = IR[27:25];
                 loadReg = 1; // Load result into register
                 gateBitshiftOut = 1; // Enable bit shift output
             end
             CompareImmediate: begin
-                chooseSR1 = IR[18:16];
+
             end
             CompareDual: begin
-                chooseSR1 = IR[18:16];
-                chooseSR2 = IR[15:13];
+
             end
             LoadSharedImmediate: begin
                 loadMar = 1; // Load address into MAR
                 gateAddOut = 1;
-                chooseSR1 = IR[24:22];
             end
             LoadSharedReg: begin
                 loadMar = 1; // Load memory data register
                 gateAddOut = 1; 
-                chooseSR1 = IR[24:22];
-                chooseSR2 = IR[21:19];
             end
             LoadGlobalImmediate: begin
                 loadMar = 1; // Load global address into MAR
                 gateAddOut = 1; 
-                chooseSR1 = IR[24:22];
             end
             LoadGlobalReg: begin
                 loadMar = 1; // Load global data into MDR
                 gateAddOut = 1; 
-                chooseSR1 = IR[24:22];
-                chooseSR2 = IR[19:21];
             end
             StoreSharedImmediate: begin
                 loadMar = 1; // Load address into MAR
                 gateAddOut = 1; 
-                chooseSR1 = IR[24:22];
-                chooseSR2 = IR[19:21];
             end
             StoreSharedReg: begin
                 loadMar = 1; // Load address into MAR
@@ -274,23 +262,18 @@ module gpuCore(
             StoreGlobalImmediate: begin
                 loadMar = 1; // Load address into MAR
                 gateAddOut = 1; 
-                chooseSR1 = IR[24:22];
             end
             StoreGlobalReg: begin
                 loadMar = 1; // Load address into MAR
                 gateAddOut = 1; 
-                chooseSR1 = IR[24:22];
-                chooseSR2 = IR[19:21];
             end
             StoreMemoryDataShared: begin
                 loadMdr = 1; // Load address into MAR
-                gateSR1Out = 1;
-                chooseSR1 = IR[27:25];
+                gateSR1Out = 1; 
             end
             StoreMemoryDataGlobal: begin
                 loadMdr = 1; // Load address into MAR
                 gateSR1Out = 1; 
-                chooseSR1 = IR[27:25];
             end
             WriteMemoryDataShared: begin
                 writingMemoryDataShared = 1;
@@ -301,17 +284,14 @@ module gpuCore(
             ReadMemoryDataShared: begin
                 readingMemoryDataShared = 1;
                 externalMdrGate = 1;
-                loadMdr = 1;
             end
             ReadMemoryDataGlobal: begin
                 readingMemoryDataGlobal = 1;
                 externalMdrGate = 1;
-                loadMdr = 1;
             end
             StoreReadMemoryData: begin
                 loadReg = 1;
                 gateMdrOut = 1;
-                chooseDR = IR[27:25];
             end
             default: begin
 
@@ -348,13 +328,12 @@ module regFile(
     output logic [31:0] sr2Out
 );
     logic [31:0] registers [7];
-//    int resetI;
+    int resetI;
     always_ff @(posedge clk) begin
         if(reset) begin
-//            for(resetI = 0; resetI < 7; resetI += 1) begin
-//                registers[resetI] <= 0;
-//            end
-            registers <= '{default: 0};
+            for(resetI = 0; resetI < 7; resetI += 1) begin
+                registers[resetI] <= 0;
+            end
         end
         else begin
             if(loadReg) begin
@@ -367,3 +346,4 @@ module regFile(
         sr2Out = (&sr2) ? threadID : registers[sr2];
     end
 endmodule
+
