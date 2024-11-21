@@ -4,15 +4,16 @@ module gpuCore(
     input logic clk,
     input logic [31:0] threadId,
     input logic reset,
-    input logic finishedReadMemoryDataShared,
     input logic finishedReadMemoryDataGlobal,
-    input logic finishedWriteMemoryDataShared,
     input logic finishedWriteMemoryDataGlobal,
+    input logic [31:0] MDRIn,
     output logic readyForNextInstruction,
     output logic writingMemoryDataShared,
     output logic writingMemoryDataGlobal,
     output logic readingMemoryDataShared,
-    output logic readingMemoryDataGlobal
+    output logic readingMemoryDataGlobal,
+    output logic [31:0] marOut,
+    output logic [31:0] mdrOut
 );
     enum logic [21:0] {
         Decode, 
@@ -40,11 +41,25 @@ module gpuCore(
         Bad
     } state;
     
-    logic [31:0] sr1, sr2, mult_out, main_bus, add_in2, IR, add_out, bitShiftOut, bitwiseOut, comparatorOut, comparatorInput2, mdr, mar;
+    logic [31:0] SR1Out, SR2Out, multOut, mainBus, addIn2, addOut, bitShiftOut, bitwiseOut, comparatorOut, comparatorInput2, DRIn;
+    logic [31:0] IR, mdr, mar;
     logic [5:0] countdown;
     logic countdownOn, comparatorPositive, comparatorNegative, comparatorZero, skipLines;
+    logic [2:0] chooseSR1, chooseSR2, chooseDR;
+    logic loadReg, loadMar, loadMdr, gateMultOut, gateBitwiseOut, gateBitshiftOut, gateAddOut, gateMdrOut, loadIR, gateSR1Out, externalMdrGate; 
 
-    logic loadReg, loadMar, loadMdr, gateMultOut, gateBitwiseOut, gateBitshiftOut, gateAddOut, gateMdrOut, loadIR, gateSR1Out; 
+    regFile regFileInst(
+        .clk(clk), 
+        .reset(reset),
+        .loadReg(loadReg),
+        .sr1(chooseSR1),
+        .sr2(chooseSR2),
+        .dr(chooseDR),
+        .dataIn(mainBus),
+        .sr1Out(SR1Out),
+        .sr2Out(SR2Out),
+        .threadID(threadId)
+    );
 
     always_ff @(posedge clk) begin
         if (reset) begin
@@ -55,6 +70,8 @@ module gpuCore(
             mdr <= 0;
         end
         else begin
+
+            //state transitions
             if(state == Decode && executeInstruction && !countdownOn) begin
                 IR <= instruction;
                 case(instruction[31:28])
@@ -93,16 +110,18 @@ module gpuCore(
                     StoreSharedReg: state <= StoreMemoryDataShared;
                     StoreGlobalImmediate: state <= StoreMemoryDataGlobal;
                     StoreGlobalReg: state <= StoreMemoryDataGlobal;
-                    ReadMemoryDataShared: state <= (finishedReadMemoryDataShared) ? StoreReadMemoryData : ReadMemoryDataShared;
+                    ReadMemoryDataShared: state <= StoreReadMemoryData;
                     ReadMemoryDataGlobal: state <= (finishedReadMemoryDataGlobal) ? StoreReadMemoryData : ReadMemoryDataGlobal;
                     StoreReadMemoryData: state <= Decode;
                     WriteMemoryDataGlobal: state <= (finishedWriteMemoryDataGlobal) ? Decode : WriteMemoryDataGlobal;
-                    WriteMemoryDataShared: state <= (finishedWriteMemoryDataShared) ? Decode : WriteMemoryDataShared;
+                    WriteMemoryDataShared: state <= Decode;
                     Decode: state <= Decode;
                     default: state <= Bad; //this should never happen
                 endcase
             end
-            if(skipLines && (CompareImmediate || CompareDual)) begin
+
+            //For the Countdown
+            if(skipLines && (state == CompareImmediate || state == CompareDual)) begin
                 countdown <= IR[24:19];
             end
             else begin
@@ -113,37 +132,44 @@ module gpuCore(
                     countdown <= countdown;
                 end
             end
+
+            //For Mar
+            if(loadMdr) begin
+                mdr <= (externalMdrGate) ? MDRIn : mainBus; //if externalMDRGate is 1, then get the MDR value from external to the module
+            end
+
+            mar <= (loadMar) ? mainBus : mar;
         end
     end
 
     always_comb begin
         countdownOn = |countdown;
-        mult_out = sr1 * sr2;
-        add_in2 = ((IR[21]) ? {{16{IR[15]}}, IR[15:0]} : sr2) ^ {32{IR[20]}};
-        add_out = sr1 + add_in2 + {{31{1'b0}}, IR[20]};
+        multOut = SR1Out * ((IR[21]) ? {{16{IR[15]}}, IR[15:0]} : SR2Out);
+        addIn2 = ((IR[21]) ? {{16{IR[15]}}, IR[15:0]} : SR2Out) ^ {32{IR[20]}};
+        addOut = SR1Out + addIn2 + {{31{1'b0}}, IR[20]};
         case(IR[21:18])
-            4'b0000: bitShiftOut = {1'b0, sr1[31:1]};
-            4'b0001: bitShiftOut = {2'b0, sr1[31:2]};
-            4'b0010: bitShiftOut = {4'b0, sr1[31:4]};
-            4'b0011: bitShiftOut = {8'b0, sr1[31:8]};
-            4'b0100: bitShiftOut = {16'b0, sr1[31:16]};
-            4'b0101: bitShiftOut = {24'b0, sr1[31:24]};
-            4'b1000: bitShiftOut = {sr1[30:0], 1'b0};
-            4'b1001: bitShiftOut = {sr1[29:0], 2'b0};
-            4'b1010: bitShiftOut = {sr1[27:0], 4'b0};
-            4'b1011: bitShiftOut = {sr1[23:0], 8'b0};
-            4'b1100: bitShiftOut = {sr1[15:0], 16'b0};
-            4'b1101: bitShiftOut = {sr1[7:0], 24'b0};
-            default: bitShiftOut = sr1;
+            4'b0000: bitShiftOut = {1'b0, SR1Out[31:1]};
+            4'b0001: bitShiftOut = {2'b0, SR1Out[31:2]};
+            4'b0010: bitShiftOut = {4'b0, SR1Out[31:4]};
+            4'b0011: bitShiftOut = {8'b0, SR1Out[31:8]};
+            4'b0100: bitShiftOut = {16'b0, SR1Out[31:16]};
+            4'b0101: bitShiftOut = {24'b0, SR1Out[31:24]};
+            4'b1000: bitShiftOut = {SR1Out[30:0], 1'b0};
+            4'b1001: bitShiftOut = {SR1Out[29:0], 2'b0};
+            4'b1010: bitShiftOut = {SR1Out[27:0], 4'b0};
+            4'b1011: bitShiftOut = {SR1Out[23:0], 8'b0};
+            4'b1100: bitShiftOut = {SR1Out[15:0], 16'b0};
+            4'b1101: bitShiftOut = {SR1Out[7:0], 24'b0};
+            default: bitShiftOut = SR1Out;
         endcase
         case(IR[21:20])
-            2'b00: bitwiseOut = sr1 & sr2;
-            2'b01: bitwiseOut = sr1 & {{16{IR[19]}}, IR[15:0]};
-            2'b10: bitwiseOut = sr1 | sr2;
-            2'b11: bitwiseOut = sr1 | {{16{IR[19]}}, IR[15:0]};
+            2'b00: bitwiseOut = SR1Out & SR2Out;
+            2'b01: bitwiseOut = SR1Out & {{16{IR[19]}}, IR[15:0]};
+            2'b10: bitwiseOut = SR1Out | SR2Out;
+            2'b11: bitwiseOut = SR1Out | {{16{IR[19]}}, IR[15:0]};
         endcase
-        comparatorInput2 = (state == CompareDual) ? sr2 : {{16{IR[15]}}, IR[15:0]};
-        comparatorOut = sr1 - comparatorInput2;
+        comparatorInput2 = (state == CompareDual) ? SR2Out : {{16{IR[15]}}, IR[15:0]};
+        comparatorOut = SR1Out - comparatorInput2;
         comparatorNegative = comparatorOut[31];
         comparatorZero = !(|comparatorOut);
         comparatorPositive = ~(comparatorZero | comparatorNegative);
@@ -154,6 +180,7 @@ module gpuCore(
 
 
 
+//    logic [2:0] chooseSR1, chooseSR2, chooseDR;
 
     always_comb begin
         // Default values for control signals
@@ -165,58 +192,80 @@ module gpuCore(
         gateBitshiftOut = 1'b0;
         gateAddOut = 1'b0;
         gateMdrOut = 1'b0;
-        loadIR = 1'b0;
         gateSR1Out = 1'b0;
         writingMemoryDataGlobal = 1'b0;
         writingMemoryDataShared = 1'b0;
         readingMemoryDataGlobal = 1'b0;
         readingMemoryDataShared = 1'b0;
+        externalMdrGate = 1'b0;
+        chooseSR1 = 3'bxxx;
+        chooseSR2 = 3'bxxx;
+        chooseDR = 3'bxxx;
         // State-based control signal assignments
         case (state)
             Decode: begin
-                loadIR = 1; // Load instruction register
             end
             Add: begin
+                chooseSR1 = IR[24:22];
+                chooseSR2 = IR[19:17];
+                chooseDR = IR[27:25];
                 loadReg = 1; // Load result into register
                 gateAddOut = 1; // Enable ALU add output
             end
             Bitwise: begin
+                chooseSR1 = IR[24:22];
+                chooseSR2 = IR[19:17];
+                chooseDR = IR[27:25];
                 loadReg = 1; // Load result into register
                 gateBitwiseOut = 1; // Enable bitwise operation output
             end
             Multiply: begin
+                chooseSR1 = IR[24:22];
+                chooseSR2 = IR[19:17];
+                chooseDR = IR[27:25];
                 loadReg = 1; // Load result into register
                 gateMultOut = 1; // Enable multiplier output
             end
             BitShift: begin
+                chooseSR1 = IR[24:22];
+                chooseDR = IR[27:25];
                 loadReg = 1; // Load result into register
                 gateBitshiftOut = 1; // Enable bit shift output
             end
             CompareImmediate: begin
-
+                chooseSR1 = IR[18:16];
             end
             CompareDual: begin
-
+                chooseSR1 = IR[18:16];
+                chooseSR2 = IR[15:13];
             end
             LoadSharedImmediate: begin
                 loadMar = 1; // Load address into MAR
                 gateAddOut = 1;
+                chooseSR1 = IR[24:22];
             end
             LoadSharedReg: begin
                 loadMar = 1; // Load memory data register
                 gateAddOut = 1; 
+                chooseSR1 = IR[24:22];
+                chooseSR2 = IR[19:21];
             end
             LoadGlobalImmediate: begin
                 loadMar = 1; // Load global address into MAR
                 gateAddOut = 1; 
+                chooseSR1 = IR[24:22];
             end
             LoadGlobalReg: begin
                 loadMar = 1; // Load global data into MDR
                 gateAddOut = 1; 
+                chooseSR1 = IR[24:22];
+                chooseSR2 = IR[19:21];
             end
             StoreSharedImmediate: begin
                 loadMar = 1; // Load address into MAR
                 gateAddOut = 1; 
+                chooseSR1 = IR[24:22];
+                chooseSR2 = IR[19:21];
             end
             StoreSharedReg: begin
                 loadMar = 1; // Load address into MAR
@@ -225,18 +274,23 @@ module gpuCore(
             StoreGlobalImmediate: begin
                 loadMar = 1; // Load address into MAR
                 gateAddOut = 1; 
+                chooseSR1 = IR[24:22];
             end
             StoreGlobalReg: begin
                 loadMar = 1; // Load address into MAR
                 gateAddOut = 1; 
+                chooseSR1 = IR[24:22];
+                chooseSR2 = IR[19:21];
             end
             StoreMemoryDataShared: begin
                 loadMdr = 1; // Load address into MAR
-                gateSR1Out = 1; 
+                gateSR1Out = 1;
+                chooseSR1 = IR[27:25];
             end
             StoreMemoryDataGlobal: begin
                 loadMdr = 1; // Load address into MAR
                 gateSR1Out = 1; 
+                chooseSR1 = IR[27:25];
             end
             WriteMemoryDataShared: begin
                 writingMemoryDataShared = 1;
@@ -246,19 +300,70 @@ module gpuCore(
             end
             ReadMemoryDataShared: begin
                 readingMemoryDataShared = 1;
+                externalMdrGate = 1;
+                loadMdr = 1;
             end
             ReadMemoryDataGlobal: begin
                 readingMemoryDataGlobal = 1;
+                externalMdrGate = 1;
+                loadMdr = 1;
             end
             StoreReadMemoryData: begin
                 loadReg = 1;
                 gateMdrOut = 1;
+                chooseDR = IR[27:25];
             end
             default: begin
 
             end
         endcase
+        
+        marOut = mar;
+        mdrOut = mdr;
+           
+        case (1'b1)
+            gateMultOut: mainBus = multOut;
+            gateBitwiseOut: mainBus = bitwiseOut;
+            gateBitshiftOut: mainBus = bitShiftOut;
+            gateAddOut: mainBus = addOut;
+            gateMdrOut: mainBus = mdr;
+            gateSR1Out: mainBus = SR1Out;
+            default: mainBus = 32'hXXXX;
+        endcase
     end
-    
-    
+
 endmodule
+
+
+module regFile(
+    input logic clk,
+    input logic reset,
+    input logic loadReg,
+    input logic [2:0] sr1,
+    input logic [2:0] sr2,
+    input logic [2:0] dr,
+    input logic [31:0] threadID,
+    input logic [31:0] dataIn,
+    output logic [31:0] sr1Out,
+    output logic [31:0] sr2Out
+);
+    logic [31:0] registers [7];
+    int resetI;
+    always_ff @(posedge clk) begin
+        if(reset) begin
+            for(resetI = 0; resetI < 7; resetI += 1) begin
+                registers[resetI] <= 0;
+            end
+        end
+        else begin
+            if(loadReg) begin
+                registers[dr] <= dataIn;
+            end
+        end
+    end
+    always_comb begin
+        sr1Out = (&sr1) ? threadID : registers[sr1];
+        sr2Out = (&sr2) ? threadID : registers[sr2];
+    end
+endmodule
+
