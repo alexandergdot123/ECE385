@@ -1,10 +1,18 @@
 module gpuCore(
-    input [31:0] instruction,
-    input executeInstruction,
-    input clk,
-    input [31:0] threadId,
-    input reset
-
+    input logic [31:0] instruction,
+    input logic executeInstruction,
+    input logic clk,
+    input logic [31:0] threadId,
+    input logic reset,
+    input logic finishedReadMemoryDataShared,
+    input logic finishedReadMemoryDataGlobal,
+    input logic finishedWriteMemoryDataShared,
+    input logic finishedWriteMemoryDataGlobal,
+    output logic readyForNextInstruction,
+    output logic writingMemoryDataShared,
+    output logic writingMemoryDataGlobal,
+    output logic readingMemoryDataShared,
+    output logic readingMemoryDataGlobal
 );
     enum logic [21:0] {
         Decode, 
@@ -22,26 +30,32 @@ module gpuCore(
         StoreSharedReg, //Opcode 1101
         StoreGlobalImmediate, //Opcode 1110
         StoreGlobalReg, //Opcode 1111
-        storeMemoryDataShared,
-        storeMemoryDataGlobal,
-        writeMemoryDataShared,
-        writeMemoryDataGlobal,
-        readMemoryDataShared,
-        readMemoryDataGlobal,
-        storeReadMemoryData
+        StoreMemoryDataShared,
+        StoreMemoryDataGlobal,
+        WriteMemoryDataShared,
+        WriteMemoryDataGlobal,
+        ReadMemoryDataShared,
+        ReadMemoryDataGlobal,
+        StoreReadMemoryData,
+        Bad
     } state;
     
-    logic [31:0] sr1, sr2, mult_out, main_bus, add_in2, IR, add_out, bitShiftOut, bitwiseOut, comparatorOut, comparatorInput2;
+    logic [31:0] sr1, sr2, mult_out, main_bus, add_in2, IR, add_out, bitShiftOut, bitwiseOut, comparatorOut, comparatorInput2, mdr, mar;
     logic [5:0] countdown;
-    logic countdownOn, comparatorPositive, comparatorNegative, comparatorZero, skipLines, readyForNextInstruction;
+    logic countdownOn, comparatorPositive, comparatorNegative, comparatorZero, skipLines;
+
+    logic loadReg, loadMar, loadMdr, gateMultOut, gateBitwiseOut, gateBitshiftOut, gateAddOut, gateMdrOut, loadIR, gateSR1Out; 
+
     always_ff @(posedge clk) begin
         if (reset) begin
             state <= Decode;
             IR <= 0;
             countdown <= 0;
+            mar <= 0;
+            mdr <= 0;
         end
         else begin
-            if(state == Decode && executeInstruction) begin
+            if(state == Decode && executeInstruction && !countdownOn) begin
                 IR <= instruction;
                 case(instruction[31:28])
                     4'b0000: state <= Add;
@@ -67,23 +81,46 @@ module gpuCore(
                     Bitwise: state <= Decode;
                     Multiply: state <= Decode;
                     BitShift: state <= Decode;
+                    CompareImmediate: state <= Decode;
+                    CompareDual: state <= Decode;
+                    LoadSharedImmediate: state <= ReadMemoryDataShared;
+                    LoadGlobalImmediate: state <= ReadMemoryDataGlobal;
+                    LoadSharedReg: state <= ReadMemoryDataShared;
+                    LoadGlobalReg: state <= ReadMemoryDataGlobal;
+                    StoreMemoryDataShared: state <= WriteMemoryDataShared;
+                    StoreMemoryDataGlobal: state <= WriteMemoryDataGlobal;
+                    StoreSharedImmediate: state <= StoreMemoryDataShared;
+                    StoreSharedReg: state <= StoreMemoryDataShared;
+                    StoreGlobalImmediate: state <= StoreMemoryDataGlobal;
+                    StoreGlobalReg: state <= StoreMemoryDataGlobal;
+                    ReadMemoryDataShared: state <= (finishedReadMemoryDataShared) ? StoreReadMemoryData : ReadMemoryDataShared;
+                    ReadMemoryDataGlobal: state <= (finishedReadMemoryDataGlobal) ? StoreReadMemoryData : ReadMemoryDataGlobal;
+                    StoreReadMemoryData: state <= Decode;
+                    WriteMemoryDataGlobal: state <= (finishedWriteMemoryDataGlobal) ? Decode : WriteMemoryDataGlobal;
+                    WriteMemoryDataShared: state <= (finishedWriteMemoryDataShared) ? Decode : WriteMemoryDataShared;
+                    Decode: state <= Decode;
+                    default: state <= Bad; //this should never happen
                 endcase
             end
             if(skipLines && (CompareImmediate || CompareDual)) begin
                 countdown <= IR[24:19];
             end
             else begin
-                countdown <= countdownOn ? countdown - 1 : 0;
+                if(executeInstruction && countdownOn) begin
+                    countdown <= countdown - 1;
+                end
+                else begin
+                    countdown <= countdown;
+                end
             end
         end
-
     end
 
     always_comb begin
         countdownOn = |countdown;
         mult_out = sr1 * sr2;
         add_in2 = ((IR[21]) ? {{16{IR[15]}}, IR[15:0]} : sr2) ^ {32{IR[20]}};
-        add_out = sr1 + add_in2 + {{31{1'b0}}, IR[21]};
+        add_out = sr1 + add_in2 + {{31{1'b0}}, IR[20]};
         case(IR[21:18])
             4'b0000: bitShiftOut = {1'b0, sr1[31:1]};
             4'b0001: bitShiftOut = {2'b0, sr1[31:2]};
@@ -115,4 +152,113 @@ module gpuCore(
     end
 
 
+
+
+
+    always_comb begin
+        // Default values for control signals
+        loadReg = 1'b0;
+        loadMar = 1'b0;
+        loadMdr = 1'b0;
+        gateMultOut = 1'b0;
+        gateBitwiseOut = 1'b0;
+        gateBitshiftOut = 1'b0;
+        gateAddOut = 1'b0;
+        gateMdrOut = 1'b0;
+        loadIR = 1'b0;
+        gateSR1Out = 1'b0;
+        writingMemoryDataGlobal = 1'b0;
+        writingMemoryDataShared = 1'b0;
+        readingMemoryDataGlobal = 1'b0;
+        readingMemoryDataShared = 1'b0;
+        // State-based control signal assignments
+        case (state)
+            Decode: begin
+                loadIR = 1; // Load instruction register
+            end
+            Add: begin
+                loadReg = 1; // Load result into register
+                gateAddOut = 1; // Enable ALU add output
+            end
+            Bitwise: begin
+                loadReg = 1; // Load result into register
+                gateBitwiseOut = 1; // Enable bitwise operation output
+            end
+            Multiply: begin
+                loadReg = 1; // Load result into register
+                gateMultOut = 1; // Enable multiplier output
+            end
+            BitShift: begin
+                loadReg = 1; // Load result into register
+                gateBitshiftOut = 1; // Enable bit shift output
+            end
+            CompareImmediate: begin
+
+            end
+            CompareDual: begin
+
+            end
+            LoadSharedImmediate: begin
+                loadMar = 1; // Load address into MAR
+                gateAddOut = 1;
+            end
+            LoadSharedReg: begin
+                loadMar = 1; // Load memory data register
+                gateAddOut = 1; 
+            end
+            LoadGlobalImmediate: begin
+                loadMar = 1; // Load global address into MAR
+                gateAddOut = 1; 
+            end
+            LoadGlobalReg: begin
+                loadMar = 1; // Load global data into MDR
+                gateAddOut = 1; 
+            end
+            StoreSharedImmediate: begin
+                loadMar = 1; // Load address into MAR
+                gateAddOut = 1; 
+            end
+            StoreSharedReg: begin
+                loadMar = 1; // Load address into MAR
+                gateAddOut = 1; 
+            end
+            StoreGlobalImmediate: begin
+                loadMar = 1; // Load address into MAR
+                gateAddOut = 1; 
+            end
+            StoreGlobalReg: begin
+                loadMar = 1; // Load address into MAR
+                gateAddOut = 1; 
+            end
+            StoreMemoryDataShared: begin
+                loadMdr = 1; // Load address into MAR
+                gateSR1Out = 1; 
+            end
+            StoreMemoryDataGlobal: begin
+                loadMdr = 1; // Load address into MAR
+                gateSR1Out = 1; 
+            end
+            WriteMemoryDataShared: begin
+                writingMemoryDataShared = 1;
+            end
+            WriteMemoryDataGlobal: begin
+                writingMemoryDataGlobal = 1;
+            end
+            ReadMemoryDataShared: begin
+                readingMemoryDataShared = 1;
+            end
+            ReadMemoryDataGlobal: begin
+                readingMemoryDataGlobal = 1;
+            end
+            StoreReadMemoryData: begin
+                loadReg = 1;
+                gateMdrOut = 1;
+            end
+            default: begin
+
+            end
+        endcase
+    end
+    
+    
 endmodule
