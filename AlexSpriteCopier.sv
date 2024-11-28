@@ -33,6 +33,11 @@ void drawSpriteAlex(uint32_t frameBufferBase, int x, int y, uint32_t spriteBase,
     makeAddSubtractInstruction(0, 0, 1, 0, 0, bottomHalf);
     for(int i = 0; i<spriteWidth; i++){
         for(int j = 0; j<spriteWidth; j+=32){
+            if(j+32 >spriteWidth){//should skip the end of sprites which do not have widths of multiples of 32. 
+                //for example, half of all cores should be inactive for the second draw of a sprite of width 48.
+                uint32_t remainder = spriteWidth - j;
+                makeCompareImmediateInstruction(0,0,1,?, 7, remainder);
+            }
             uint32_t xvals = x + j;
             uint32_t yvals = y + i;
             //add xvals + reg 7 to reg 6
